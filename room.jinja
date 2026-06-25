@@ -1,0 +1,414 @@
+{# Per-room sensor aggregation macros for Home Assistant.
+   Install: <config>/custom_templates/room.jinja
+   Reload: Developer tools → YAML → Reload template entities
+
+   Exclude entities via label ignore_canonical.
+   Exclude entity ids containing _canonical_ (generated template sensors in the same area).
+   Pair each state macro with an available_* macro for template availability: templates.
+
+   Note: macros render to text; entity lists are built with {% set %} + filters in each macro. #}
+
+{% macro join_names(entity_ids) -%}
+{%- set ns = namespace(names=[]) -%}
+{%- for eid in entity_ids -%}
+  {%- set ns.names = ns.names + [state_attr(eid, 'friendly_name') or eid] -%}
+{%- endfor -%}
+{{ ns.names | join(', ') }}
+{%- endmacro %}
+
+{# ---------- Unit conversion ---------- #}
+
+{% macro convert_to_canonical(value, source_unit, canonical_unit) -%}
+{{ value if ((source_unit or '') | lower) == ((canonical_unit or '') | lower) or ((source_unit or '') | lower) == '' else ((value - 32) * 5 / 9) if ((canonical_unit or '') | lower) in ['°c', 'c'] and ((source_unit or '') | lower) in ['°f', 'f'] else (value * 9 / 5 + 32) if ((canonical_unit or '') | lower) in ['°f', 'f'] and ((source_unit or '') | lower) in ['°c', 'c'] else (value * 1000) if ((canonical_unit or '') | lower) == 'w' and ((source_unit or '') | lower) == 'kw' else (value / 1000) if ((canonical_unit or '') | lower) == 'w' and ((source_unit or '') | lower) == 'mw' else (value / 1000) if ((canonical_unit or '') | lower) == 'kwh' and ((source_unit or '') | lower) == 'wh' else (value * 1000) if ((canonical_unit or '') | lower) == 'kwh' and ((source_unit or '') | lower) == 'mwh' else (value * 1000) if ((canonical_unit or '') | lower) == 'ppb' and ((source_unit or '') | lower) == 'ppm' else (value * 1000) if ((canonical_unit or '') | lower) == 'µg/m³' and ((source_unit or '') | lower) == 'mg/m³' else none }}
+{%- endmacro %}
+
+{# ---------- Availability ---------- #}
+
+{% macro available_numeric_by_dc(area, dc, canonical_unit) -%}
+{%- set ns = namespace(n=0) -%}
+{%- for eid in area_entities(area) | select('is_state_attr', 'device_class', dc) | reject('search', '_canonical_') -%}
+  {%- if eid not in label_entities('ignore_canonical') -%}
+    {%- if states(eid) not in ['unavailable', 'unknown', ''] -%}
+      {%- set val = states(eid) | float(none) -%}
+      {%- if val is not none -%}
+        {%- set src_unit = state_attr(eid, 'unit_of_measurement') -%}
+        {%- set converted = convert_to_canonical(val, src_unit, canonical_unit) | float(none) -%}
+        {%- if converted is not none -%}
+          {%- set ns.n = ns.n + 1 -%}
+        {%- endif -%}
+      {%- endif -%}
+    {%- endif -%}
+  {%- endif -%}
+{%- endfor -%}
+{{ (ns.n > 0) }}
+{%- endmacro %}
+
+{% macro available_sources_by_dc(area, dc) -%}
+{{ (area_entities(area)
+    | select('is_state_attr', 'device_class', dc)
+    | reject('search', '_canonical_')
+    | reject('in', label_entities('ignore_canonical'))
+    | list | length > 0) }}
+{%- endmacro %}
+
+{% macro available_type_by_dc(area, dc) -%}
+{{ (area_entities(area)
+    | select('is_state_attr', 'device_class', dc)
+    | reject('search', '_canonical_')
+    | list | length > 0) }}
+{%- endmacro %}
+
+{% macro available_lights(area) -%}
+{{ (area_entities(area)
+    | select('search', '^light[.]')
+    | reject('search', '_canonical_')
+    | reject('in', label_entities('ignore_canonical'))
+    | list | length > 0) }}
+{%- endmacro %}
+
+{% macro available_lights_type(area) -%}
+{{ (area_entities(area)
+    | select('search', '^light[.]')
+    | reject('search', '_canonical_')
+    | list | length > 0) }}
+{%- endmacro %}
+
+{% macro available_switch_named(area, substr) -%}
+{%- set ns = namespace(n=0) -%}
+{%- for eid in area_entities(area) | select('search', '^switch[.]') | reject('search', '_canonical_') -%}
+  {%- set name = (state_attr(eid, 'friendly_name') or eid) | lower -%}
+  {%- if (substr | lower) in name and eid not in label_entities('ignore_canonical') -%}
+    {%- set ns.n = ns.n + 1 -%}
+  {%- endif -%}
+{%- endfor -%}
+{{ (ns.n > 0) }}
+{%- endmacro %}
+
+{% macro available_switch_type(area, substr) -%}
+{%- set ns = namespace(n=0) -%}
+{%- for eid in area_entities(area) | select('search', '^switch[.]') | reject('search', '_canonical_') -%}
+  {%- set name = (state_attr(eid, 'friendly_name') or eid) | lower -%}
+  {%- if (substr | lower) in name -%}
+    {%- set ns.n = ns.n + 1 -%}
+  {%- endif -%}
+{%- endfor -%}
+{{ (ns.n > 0) }}
+{%- endmacro %}
+
+{% macro available_locks(area) -%}
+{{ (area_entities(area)
+    | select('search', '^lock[.]')
+    | reject('search', '_canonical_')
+    | reject('in', label_entities('ignore_canonical'))
+    | list | length > 0) }}
+{%- endmacro %}
+
+{% macro available_locks_type(area) -%}
+{{ (area_entities(area)
+    | select('search', '^lock[.]')
+    | reject('search', '_canonical_')
+    | list | length > 0) }}
+{%- endmacro %}
+
+{# ---------- Numeric aggregations ---------- #}
+
+{% macro avg(area, dc, canonical_unit) -%}
+{# Same inclusion rules as active_sensors_by_dc (skip unavailable/unknown/empty). #}
+{%- set ns = namespace(values=[]) -%}
+{%- for eid in area_entities(area) | select('is_state_attr', 'device_class', dc) | reject('search', '_canonical_') -%}
+  {%- if eid not in label_entities('ignore_canonical') -%}
+    {%- if states(eid) not in ['unavailable', 'unknown', ''] -%}
+      {%- set val = states(eid) | float(none) -%}
+      {%- if val is not none -%}
+        {%- set src_unit = state_attr(eid, 'unit_of_measurement') -%}
+        {%- set converted = convert_to_canonical(val, src_unit, canonical_unit) | float(none) -%}
+        {%- if converted is not none -%}
+          {%- set ns.values = ns.values + [converted] -%}
+        {%- endif -%}
+      {%- endif -%}
+    {%- endif -%}
+  {%- endif -%}
+{%- endfor -%}
+{%- if ns.values | length > 0 -%}
+{{ (ns.values | sum / ns.values | count) | round(1) }}
+{%- endif -%}
+{%- endmacro %}
+
+{% macro lowest(area, dc, canonical_unit) -%}
+{%- set ns = namespace(values=[]) -%}
+{%- for eid in area_entities(area) | select('is_state_attr', 'device_class', dc) | reject('search', '_canonical_') -%}
+  {%- if eid not in label_entities('ignore_canonical') -%}
+    {%- if states(eid) not in ['unavailable', 'unknown', ''] -%}
+      {%- set val = states(eid) | float(none) -%}
+      {%- if val is not none -%}
+        {%- set src_unit = state_attr(eid, 'unit_of_measurement') -%}
+        {%- set converted = convert_to_canonical(val, src_unit, canonical_unit) | float(none) -%}
+        {%- if converted is not none -%}
+          {%- set ns.values = ns.values + [converted] -%}
+        {%- endif -%}
+      {%- endif -%}
+    {%- endif -%}
+  {%- endif -%}
+{%- endfor -%}
+{%- if ns.values | length > 0 -%}
+{{ (ns.values | min) | round(1) }}
+{%- endif -%}
+{%- endmacro %}
+
+{% macro highest(area, dc, canonical_unit) -%}
+{%- set ns = namespace(values=[]) -%}
+{%- for eid in area_entities(area) | select('is_state_attr', 'device_class', dc) | reject('search', '_canonical_') -%}
+  {%- if eid not in label_entities('ignore_canonical') -%}
+    {%- if states(eid) not in ['unavailable', 'unknown', ''] -%}
+      {%- set val = states(eid) | float(none) -%}
+      {%- if val is not none -%}
+        {%- set src_unit = state_attr(eid, 'unit_of_measurement') -%}
+        {%- set converted = convert_to_canonical(val, src_unit, canonical_unit) | float(none) -%}
+        {%- if converted is not none -%}
+          {%- set ns.values = ns.values + [converted] -%}
+        {%- endif -%}
+      {%- endif -%}
+    {%- endif -%}
+  {%- endif -%}
+{%- endfor -%}
+{%- if ns.values | length > 0 -%}
+{{ (ns.values | max) | round(1) }}
+{%- endif -%}
+{%- endmacro %}
+
+{% macro total(area, dc, canonical_unit) -%}
+{%- set ns = namespace(values=[]) -%}
+{%- for eid in area_entities(area) | select('is_state_attr', 'device_class', dc) | reject('search', '_canonical_') -%}
+  {%- if eid not in label_entities('ignore_canonical') -%}
+    {%- if states(eid) not in ['unavailable', 'unknown', ''] -%}
+      {%- set val = states(eid) | float(none) -%}
+      {%- if val is not none -%}
+        {%- set src_unit = state_attr(eid, 'unit_of_measurement') -%}
+        {%- set converted = convert_to_canonical(val, src_unit, canonical_unit) | float(none) -%}
+        {%- if converted is not none -%}
+          {%- set ns.values = ns.values + [converted] -%}
+        {%- endif -%}
+      {%- endif -%}
+    {%- endif -%}
+  {%- endif -%}
+{%- endfor -%}
+{%- if ns.values | length > 0 -%}
+{{ (ns.values | sum) | round(1) }}
+{%- endif -%}
+{%- endmacro %}
+
+{% macro all_sensors_by_dc(area, dc) -%}
+{%- set ids = area_entities(area)
+    | select('is_state_attr', 'device_class', dc)
+    | reject('search', '_canonical_')
+    | reject('in', label_entities('ignore_canonical'))
+    | list -%}
+{{ join_names(ids) }}
+{%- endmacro %}
+
+{% macro active_sensors_by_dc(area, dc) -%}
+{%- set ns = namespace(ids=[]) -%}
+{%- for eid in area_entities(area) | select('is_state_attr', 'device_class', dc) | reject('search', '_canonical_') -%}
+  {%- if eid not in label_entities('ignore_canonical') -%}
+    {%- if states(eid) not in ['unavailable', 'unknown', ''] -%}
+      {%- if states(eid) | float(none) is not none -%}
+        {%- set ns.ids = ns.ids + [eid] -%}
+      {%- endif -%}
+    {%- endif -%}
+  {%- endif -%}
+{%- endfor -%}
+{{ join_names(ns.ids) }}
+{%- endmacro %}
+
+{% macro ignored_sensors_by_dc(area, dc) -%}
+{{ join_names(area_entities(area)
+    | select('is_state_attr', 'device_class', dc)
+    | reject('search', '_canonical_')
+    | select('in', label_entities('ignore_canonical'))
+    | list) }}
+{%- endmacro %}
+
+{% macro mismatched_unit_sensors_by_dc(area, dc, canonical_unit) -%}
+{%- set ns = namespace(ids=[]) -%}
+{%- for eid in area_entities(area) | select('is_state_attr', 'device_class', dc) | reject('search', '_canonical_') -%}
+  {%- if eid not in label_entities('ignore_canonical') -%}
+    {%- if states(eid) not in ['unavailable', 'unknown', ''] -%}
+      {%- set val = states(eid) | float(none) -%}
+      {%- if val is not none -%}
+        {%- set src_unit = state_attr(eid, 'unit_of_measurement') -%}
+        {%- set converted = convert_to_canonical(val, src_unit, canonical_unit) | float(none) -%}
+        {%- if converted is none -%}
+          {%- set ns.ids = ns.ids + [eid] -%}
+        {%- endif -%}
+      {%- endif -%}
+    {%- endif -%}
+  {%- endif -%}
+{%- endfor -%}
+{{ join_names(ns.ids) }}
+{%- endmacro %}
+
+{# ---------- Lights ---------- #}
+
+{% macro lights_on(area) -%}
+{{ (area_entities(area)
+    | select('search', '^light[.]')
+    | reject('search', '_canonical_')
+    | reject('in', label_entities('ignore_canonical'))
+    | reject('is_state', 'unavailable')
+    | reject('is_state', 'unknown')
+    | select('is_state', 'on') | list | count) }}
+{%- endmacro %}
+
+{% macro all_lights_in_area(area) -%}
+{%- set ids = area_entities(area)
+    | select('search', '^light[.]')
+    | reject('search', '_canonical_')
+    | reject('in', label_entities('ignore_canonical'))
+    | list -%}
+{{ join_names(ids) }}
+{%- endmacro %}
+
+{% macro active_lights_in_area(area) -%}
+{%- set ids = area_entities(area)
+    | select('search', '^light[.]')
+    | reject('search', '_canonical_')
+    | reject('in', label_entities('ignore_canonical'))
+    | reject('is_state', 'unavailable')
+    | reject('is_state', 'unknown')
+    | select('is_state', 'on') | list -%}
+{{ join_names(ids) }}
+{%- endmacro %}
+
+{% macro ignored_lights_in_area(area) -%}
+{{ join_names(area_entities(area)
+    | select('search', '^light[.]')
+    | reject('search', '_canonical_')
+    | select('in', label_entities('ignore_canonical'))
+    | list) }}
+{%- endmacro %}
+
+{# ---------- Binary by device_class ---------- #}
+
+{% macro any_on(area, dc) -%}
+{{ (area_entities(area)
+    | select('is_state_attr', 'device_class', dc)
+    | reject('search', '_canonical_')
+    | reject('in', label_entities('ignore_canonical'))
+    | reject('is_state', 'unavailable')
+    | reject('is_state', 'unknown')
+    | select('is_state', 'on') | list | count > 0) }}
+{%- endmacro %}
+
+{% macro all_binary_by_dc(area, dc) -%}
+{%- set ids = area_entities(area)
+    | select('is_state_attr', 'device_class', dc)
+    | reject('search', '_canonical_')
+    | reject('in', label_entities('ignore_canonical'))
+    | list -%}
+{{ join_names(ids) }}
+{%- endmacro %}
+
+{% macro active_binary_by_dc(area, dc) -%}
+{%- set ids = area_entities(area)
+    | select('is_state_attr', 'device_class', dc)
+    | reject('search', '_canonical_')
+    | reject('in', label_entities('ignore_canonical'))
+    | reject('is_state', 'unavailable')
+    | reject('is_state', 'unknown')
+    | select('is_state', 'on') | list -%}
+{{ join_names(ids) }}
+{%- endmacro %}
+
+{% macro ignored_binary_by_dc(area, dc) -%}
+{{ join_names(area_entities(area)
+    | select('is_state_attr', 'device_class', dc)
+    | reject('search', '_canonical_')
+    | select('in', label_entities('ignore_canonical'))
+    | list) }}
+{%- endmacro %}
+
+{# ---------- Switches by name substring ---------- #}
+
+{% macro any_switch_named(area, substr) -%}
+{%- set ns = namespace(found=false) -%}
+{%- for eid in area_entities(area) | select('search', '^switch[.]') | reject('search', '_canonical_') -%}
+  {%- set name = (state_attr(eid, 'friendly_name') or eid) | lower -%}
+  {%- if (substr | lower) in name and eid not in label_entities('ignore_canonical') and states(eid) == 'on' -%}
+    {%- set ns.found = true -%}
+  {%- endif -%}
+{%- endfor -%}
+{{ ns.found }}
+{%- endmacro %}
+
+{% macro all_switches_named(area, substr) -%}
+{%- set ns = namespace(ids=[]) -%}
+{%- for eid in area_entities(area) | select('search', '^switch[.]') | reject('search', '_canonical_') -%}
+  {%- set name = (state_attr(eid, 'friendly_name') or eid) | lower -%}
+  {%- if (substr | lower) in name and eid not in label_entities('ignore_canonical') -%}
+    {%- set ns.ids = ns.ids + [eid] -%}
+  {%- endif -%}
+{%- endfor -%}
+{{ join_names(ns.ids) }}
+{%- endmacro %}
+
+{% macro active_switches_named(area, substr) -%}
+{%- set ns = namespace(ids=[]) -%}
+{%- for eid in area_entities(area) | select('search', '^switch[.]') | reject('search', '_canonical_') -%}
+  {%- set name = (state_attr(eid, 'friendly_name') or eid) | lower -%}
+  {%- if (substr | lower) in name and eid not in label_entities('ignore_canonical') and states(eid) == 'on' -%}
+    {%- set ns.ids = ns.ids + [eid] -%}
+  {%- endif -%}
+{%- endfor -%}
+{{ join_names(ns.ids) }}
+{%- endmacro %}
+
+{% macro ignored_switches_named(area, substr) -%}
+{%- set ns = namespace(ids=[]) -%}
+{%- for eid in area_entities(area) | select('search', '^switch[.]') | reject('search', '_canonical_') -%}
+  {%- set name = (state_attr(eid, 'friendly_name') or eid) | lower -%}
+  {%- if (substr | lower) in name and eid in label_entities('ignore_canonical') -%}
+    {%- set ns.ids = ns.ids + [eid] -%}
+  {%- endif -%}
+{%- endfor -%}
+{{ join_names(ns.ids) }}
+{%- endmacro %}
+
+{# ---------- Locks ---------- #}
+
+{% macro any_unlocked(area) -%}
+{{ (area_entities(area)
+    | select('search', '^lock[.]')
+    | reject('search', '_canonical_')
+    | reject('in', label_entities('ignore_canonical'))
+    | reject('is_state', 'unavailable')
+    | reject('is_state', 'unknown')
+    | select('is_state', 'unlocked') | list | count > 0) }}
+{%- endmacro %}
+
+{% macro all_locks_in_area(area) -%}
+{%- set ids = area_entities(area)
+    | select('search', '^lock[.]')
+    | reject('search', '_canonical_')
+    | reject('in', label_entities('ignore_canonical'))
+    | list -%}
+{{ join_names(ids) }}
+{%- endmacro %}
+
+{% macro active_unlocked_locks(area) -%}
+{%- set ids = area_entities(area)
+    | select('search', '^lock[.]')
+    | reject('search', '_canonical_')
+    | reject('in', label_entities('ignore_canonical'))
+    | reject('is_state', 'unavailable')
+    | reject('is_state', 'unknown')
+    | select('is_state', 'unlocked') | list -%}
+{{ join_names(ids) }}
+{%- endmacro %}
+
+{% macro ignored_locks_in_area(area) -%}
+{{ join_names(area_entities(area)
+    | select('search', '^lock[.]')
+    | reject('search', '_canonical_')
+    | select('in', label_entities('ignore_canonical'))
+    | list) }}
+{%- endmacro %}
