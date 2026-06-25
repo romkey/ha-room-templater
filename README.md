@@ -1,7 +1,7 @@
 # HA Room Templater
 
-[![Tests](https://github.com/romkey/ha-room-templater/actions/workflows/ci.yml/badge.svg?job=test)](https://github.com/romkey/ha-room-templater/actions/workflows/ci.yml)
-[![Lint](https://github.com/romkey/ha-room-templater/actions/workflows/ci.yml/badge.svg?job=lint)](https://github.com/romkey/ha-room-templater/actions/workflows/ci.yml)
+[![Tests](https://github.com/romkey/ha-room-templater/actions/workflows/test.yml/badge.svg?branch=main&event=push)](https://github.com/romkey/ha-room-templater/actions/workflows/test.yml)
+[![Lint](https://github.com/romkey/ha-room-templater/actions/workflows/lint.yml/badge.svg?branch=main&event=push)](https://github.com/romkey/ha-room-templater/actions/workflows/lint.yml)
 
 Generate **per-room template sensors** for [Home Assistant](https://www.home-assistant.io/) that aggregate readings from every entity assigned to that area.
 
