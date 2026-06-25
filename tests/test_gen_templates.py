@@ -75,7 +75,10 @@ class TestNamingHelpers:
         }
         assert (
             gt.entity_id(
-                "sensor", "John's Office", "canonical_", "Temperature",
+                "sensor",
+                "John's Office",
+                "canonical_",
+                "Temperature",
                 entity_id_map=eid_map,
             )
             == "sensor.johns_office_canonical_temperature"
@@ -87,7 +90,10 @@ class TestNamingHelpers:
         so the generator still emits a usable dashboard."""
         assert (
             gt.entity_id(
-                "sensor", "Back Room", "canonical_", "Temperature",
+                "sensor",
+                "Back Room",
+                "canonical_",
+                "Temperature",
                 entity_id_map={},
             )
             == "sensor.back_room_canonical_temperature"
@@ -99,7 +105,10 @@ class TestNamingHelpers:
         eid_map = {"Kitchen canonical_occupancy": "sensor.somethingelse"}
         assert (
             gt.entity_id(
-                "binary_sensor", "Kitchen", "canonical_", "Occupancy",
+                "binary_sensor",
+                "Kitchen",
+                "canonical_",
+                "Occupancy",
                 entity_id_map=eid_map,
             )
             == "binary_sensor.kitchen_canonical_occupancy"
@@ -362,9 +371,9 @@ class TestFetchAreaIds:
 
         for source in (all_s, active, ignored, mismatched):
             wrapper = next(
-                r for r in rows
-                if r.get("type") == "conditional"
-                and r["row"].get("entity") == source.entity_id
+                r
+                for r in rows
+                if r.get("type") == "conditional" and r["row"].get("entity") == source.entity_id
             )
             inner = wrapper["row"]
             assert inner["type"] == "attribute", source.entity_id
@@ -388,20 +397,27 @@ class TestFetchAreaIds:
         rows = gt.build_room_dashboard_entities([m])
 
         main_row = next(
-            r for r in rows
-            if r.get("type") == "conditional"
-            and r["row"].get("entity") == main.entity_id
+            r
+            for r in rows
+            if r.get("type") == "conditional" and r["row"].get("entity") == main.entity_id
         )
         assert main_row["conditions"][0]["entity"] == main.entity_id, (
             "Main canonical row must still hide when the main is unavailable"
         )
 
         source_rows = [
-            r for r in rows
+            r
+            for r in rows
             if r.get("type") == "conditional"
             and "row" in r
             and (
-                r["row"].get("entity") in {all_s.entity_id, active.entity_id, ignored.entity_id, mismatched.entity_id}
+                r["row"].get("entity")
+                in {
+                    all_s.entity_id,
+                    active.entity_id,
+                    ignored.entity_id,
+                    mismatched.entity_id,
+                }
                 or r["row"].get("label") == m.section_label
             )
         ]

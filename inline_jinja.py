@@ -178,9 +178,7 @@ def _count_join_names(body: str) -> str:
     return _rewrite_join_names(body, lambda ids: f"{{{{ ({ids}) | length }}}}")
 
 
-def _bind_and_flatten(
-    body: str, param_list: list[str], room: str, args: list[str]
-) -> str:
+def _bind_and_flatten(body: str, param_list: list[str], room: str, args: list[str]) -> str:
     bindings: dict[str, str] = {}
     if param_list:
         bindings[param_list[0]] = jinja_str(room)
@@ -228,5 +226,3 @@ def render_count_template(
     body = _count_join_names(body)
     body = _COMMENT_RE.sub("", body)
     return _bind_and_flatten(body, param_list, room, args)
-
-

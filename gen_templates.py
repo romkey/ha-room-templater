@@ -557,9 +557,7 @@ def fetch_entity_id_map(config: Config) -> dict[str, str]:
     entities, the lookup misses and we fall back to the slug prediction.
     """
     try:
-        response = requests.get(
-            f"{config.ha_url}/api/states", headers=config.headers, timeout=30
-        )
+        response = requests.get(f"{config.ha_url}/api/states", headers=config.headers, timeout=30)
         response.raise_for_status()
     except requests.RequestException as exc:
         print(
@@ -787,9 +785,7 @@ def build_room_dashboard_entities(
         if m.mismatched_unit_sensors is not None:
             source_entities.append(m.mismatched_unit_sensors)
         for ent in source_entities:
-            rows.append(
-                dashboard_row_when_available(anchor_id, _sources_attribute_row(ent))
-            )
+            rows.append(dashboard_row_when_available(anchor_id, _sources_attribute_row(ent)))
     return rows
 
 
@@ -854,8 +850,7 @@ def report_dashboard_resolution(
         return 0
     if not missed:
         print(
-            f"Dashboard: all {total} entity references verified against "
-            "Home Assistant's registry."
+            f"Dashboard: all {total} entity references verified against Home Assistant's registry."
         )
         return 0
     print(
@@ -942,9 +937,7 @@ def main() -> None:
 
     area_ids = fetch_area_ids(config)
     if area_ids:
-        print(
-            f"Fetched {len(area_ids)} area id(s) for dashboard Settings links."
-        )
+        print(f"Fetched {len(area_ids)} area id(s) for dashboard Settings links.")
 
     result: list[dict] = []
     room_measurements: dict[str, list[DashboardMeasurement]] = {}
@@ -972,15 +965,21 @@ def main() -> None:
             base = sensor["name"]
 
             def _dash_entity(
-                kind: str, label: str, suffix: str = ""
+                kind: str,
+                label: str,
+                suffix: str = "",
+                *,
+                _base: str = base,
+                _room: str = room,
+                _prefix: str = prefix,
             ) -> DashboardEntity:
-                sensor_name = f"{base}{suffix}"
+                sensor_name = f"{_base}{suffix}"
                 return DashboardEntity(
                     entity_id=entity_id(
-                        kind, room, prefix, sensor_name, entity_id_map=entity_id_map
+                        kind, _room, _prefix, sensor_name, entity_id_map=entity_id_map
                     ),
                     label=label,
-                    friendly_name=template_name(room, prefix, sensor_name),
+                    friendly_name=template_name(_room, _prefix, sensor_name),
                 )
 
             mismatched = None
@@ -993,12 +992,8 @@ def main() -> None:
                     section_label=base.lower(),
                     main=_dash_entity(sensor["kind"], f"{prefix}{base.lower()}"),
                     all_sensors=_dash_entity("sensor", "All", SUFFIX_ALL_SENSORS),
-                    active_sensors=_dash_entity(
-                        "sensor", "Active", SUFFIX_ACTIVE_SENSORS
-                    ),
-                    ignored_sensors=_dash_entity(
-                        "sensor", "Ignored", SUFFIX_IGNORED_SENSORS
-                    ),
+                    active_sensors=_dash_entity("sensor", "Active", SUFFIX_ACTIVE_SENSORS),
+                    ignored_sensors=_dash_entity("sensor", "Ignored", SUFFIX_IGNORED_SENSORS),
                     mismatched_unit_sensors=mismatched,
                 )
             )

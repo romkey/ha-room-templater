@@ -1,5 +1,8 @@
 # HA Room Templater
 
+[![Tests](https://github.com/romkey/ha-room-templater/actions/workflows/ci.yml/badge.svg?job=test)](https://github.com/romkey/ha-room-templater/actions/workflows/ci.yml)
+[![Lint](https://github.com/romkey/ha-room-templater/actions/workflows/ci.yml/badge.svg?job=lint)](https://github.com/romkey/ha-room-templater/actions/workflows/ci.yml)
+
 Generate **per-room template sensors** for [Home Assistant](https://www.home-assistant.io/) that aggregate readings from every entity assigned to that area.
 
 For each room (HA “area”), you get canonical entities such as average temperature, highest CO₂, total power, whether any door is open, and so on—without hand-writing dozens of template definitions.
